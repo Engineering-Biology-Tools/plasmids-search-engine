@@ -6,3 +6,7 @@ Browser for plasmids search.
 **What is plasmid**: according to [Wikepedia](https://en.wikipedia.org/wiki/Plasmid), plasmid is a small, extrachromosomal DNA molecule within a cell that is physically separated from chromosomal DNA and can replicate independently.
 
 **Data sources**: browser engine store data from [Addgene](https://www.addgene.org/), [Registry of Standard Biological Parts](http://parts.igem.org/Main_Page), and other sources.  
+
+**Technological Stack**: Python, PostgreSQL, Django, Flask, FastAPI, ...   
+
+
