@@ -10,3 +10,10 @@ Browser for plasmids search.
 **Technological Stack**: Python, PostgreSQL, Django, Flask, FastAPI, ...   
 
 
+# Linux (Nix or NixOs)
+
+To run the script:
+```
+nix-shell
+python 'Addgene parser.py'
+```
