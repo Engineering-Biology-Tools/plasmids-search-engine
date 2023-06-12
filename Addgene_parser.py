@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from bs4 import BeautifulSoup
 import requests
 import pandas as pd
-import urllib.request as request
+from urllib.request import request
 import os
 
 
