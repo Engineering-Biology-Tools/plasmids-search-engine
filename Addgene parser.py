@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from bs4 import BeautifulSoup
 import requests
 import pandas as pd
-import urllib.request
+from urlib.requests import request
 import os
 
 
@@ -56,8 +56,8 @@ class Plasmid(Description):
 
     def to_txt(self, path, doc_seq):
         sequence = doc_seq.find_all('a', class_='genbank-file-download', href=True)[0]['href']
-        req = urllib.request.Request(sequence, headers={'User-Agent': 'Mozilla/5.0'})
-        seq_file = urllib.request.urlopen(req).read()
+        req = request.Request(sequence, headers={'User-Agent': 'Mozilla/5.0'})
+        seq_file = request.urlopen(req).read()
 
         if not os.path.isdir(path + f'Plasmids\\{self.name}'):
             os.makedirs(path + f'Plasmids\\{self.name}')
