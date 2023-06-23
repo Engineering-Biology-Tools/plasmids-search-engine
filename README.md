@@ -15,5 +15,5 @@ Browser for plasmids search.
 To run the script:
 ```
 nix-shell
-python 'Addgene parser.py'
+python 'Addgene_parser.py'
 ```
