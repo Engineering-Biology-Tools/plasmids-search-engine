@@ -10,7 +10,7 @@
         genebank file and csv attributes of the plasmid.
 
 """
-
+import json
 from dataclasses import dataclass
 from bs4 import BeautifulSoup
 import requests
@@ -46,6 +46,12 @@ class Plasmid(Description):
             os.makedirs(path + f'Plasmids\\{self.name}')
         with open(path + f'Plasmids\\{self.name}\\{self.name}_csv.txt', 'w', encoding='utf-8') as file:
             file.write(pd.DataFrame.from_dict({k: [v] for k, v in self.__dict__.items()}).to_csv(index_label=False))
+
+    def to_json(self, path):
+        if not os.path.isdir(path + f'Plasmids\\{self.name}'):
+            os.makedirs(path + f'Plasmids\\{self.name}')
+        with open(path + f'Plasmids\\{self.name}\\{self.name}.json', 'w', encoding='utf-8') as file:
+            file.write(json.dumps({k: [v] for k, v in self.__dict__.items()}))
 
     def to_txt(self, path, doc_seq):
         sequence = doc_seq.find_all('a', class_='genbank-file-download', href=True)[0]['href']
@@ -164,7 +170,8 @@ class PlasmidParser:
                           backbone=backbone, id=id,
                           vendor=self.vendor, url=self.url, growth_t=growth_t, size=size)
 
-        plasmid.to_csv(self.path)
+        # plasmid.to_csv(self.path) # Uncomment it if you want to write down a text with csv information
+        plasmid.to_json(self.path)
         plasmid.to_txt(self.path, self.doc_seq)
 
         PlasmidParser.plasmid_list.append(plasmid)
