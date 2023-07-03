@@ -35,9 +35,7 @@ def make_sql_style(plasmid: Addgene_parser.Plasmid) -> Addgene_parser.Plasmid:
                 if letter == "'":
                     setattr(plasmid, f'{key}', "''".join(value.split("'")))  # removing "'" problem
 
-    setattr(plasmid, 'sequence',
-            "".join("{:02x}".format(ord(character)) for character in  # coding to 16 bit
-                    plasmid.sequence.decode('utf-8')))  # bytes.fromhex(a).decode('utf-8') - to decode
+    plasmid.sequence = plasmid.sequence.decode('utf-8')
     return plasmid
 
 
@@ -67,7 +65,7 @@ def create_record(plasmid: Addgene_parser.Plasmid, conn):
         f"  VALUES ({plasmid.id}, '{plasmid.name}', {plasmid.size}, '{plasmid.backbone}', '{plasmid.vector_type}'," +
         f" '{plasmid.marker}', '{plasmid.resistance}', '{plasmid.growth_t}', '{plasmid.growth_strain}'," +
         f" '{plasmid.growth_instructions}', '{plasmid.copy_num}', '{plasmid.gene_insert}', '{plasmid.url}'," +
-        f" '{plasmid.sequence}')")
+        f" %s)", (plasmid.sequence,))
     print(f"Plasmid {plasmid.id}, {plasmid.name} has been added to {DATABASE_CONFIG.get('database')}.")
     # cursor.execute('SELECT * FROM addgene_plasmids')
     # print(cursor.fetchall())
