@@ -90,14 +90,20 @@ class Plasmid(Description):
             file.write(json.dumps({k: [v] for k, v in self.__dict__.items()}))
 
     def to_txt(self, path, seq_file):
-        if not os.path.isdir(path + f'Plasmids\\{self.name}'):
-            os.makedirs(path + f'Plasmids\\{self.name}')
-        with open(path + f'Plasmids\\{self.name}\\{self.name}.txt', 'wb') as file:
+        if seq_file is None:
+            return None
+        new_name = self.name
+        for char in self.name:
+            if char in '<>:"/\\|?*':
+                new_name = new_name.replace(char, ';')
+        if not os.path.isdir(path + f'Plasmids\\{new_name}'):
+            os.makedirs(path + f'Plasmids\\{new_name}')
+        with open(path + f'Plasmids\\{new_name}\\{new_name}.txt', 'wb') as file:
             file.write(seq_file)
 
         # if there is no info about total vector size on the parsed page
-        if self.size is None:
-            with open(path + f'Plasmids\\{self.name}\\{self.name}.txt', 'r') as file:
+        if self.size is None and os.path.isdir(path + f'Plasmids\\{new_name}'):
+            with open(path + f'Plasmids\\{new_name}\\{new_name}.txt', 'r') as file:
                 self.size = int(file.readline().split()[2])
 
 
@@ -128,17 +134,18 @@ class PlasmidParser:
 
     def get(self, id: int):
         if self.sorry_defence():
+            print(f"Sorry! There is no such id: {id}.")
             return None
         else:
             plasmid = Plasmid(name=self.get_name(), gene_insert=self.get_insert(),
                               growth_instructions=self.get_growth_instructions(),
                               copy_num=self.get_copy_number(), marker=self.get_marker(),
                               growth_strain=self.get_growth_strain(), resistance=self.get_resistance(),
-                              vector_type=self.get_resistance(),
+                              vector_type=self.get_vector_type(),
                               backbone=self.get_backbone(), id=id,
                               vendor=self.vendor, url=self.url, growth_t=self.get_growth_t(), size=self.get_size(),
                               sequence=self.get_txt(self.doc_seq))
-
+            print(f'Getting {plasmid.name}, id: {plasmid.id}')
             # plasmid.to_csv(self.path) # Uncomment if you want to write down a text with csv
             # plasmid.to_json(self.path) # Uncomment if you want to write down a json file
             plasmid.to_txt(self.path, self.get_txt(self.doc_seq))
@@ -155,16 +162,18 @@ class PlasmidParser:
             return BeautifulSoup(result_html.text, 'html.parser'), BeautifulSoup(result_seq.text, 'html.parser')
 
     def get_txt(self, doc_seq):
-        sequence = doc_seq.find_all('a', class_='genbank-file-download', href=True)[0]['href']
-        req = request.Request(sequence, headers={'User-Agent': 'Mozilla/5.0'})
-        seq_file = request.urlopen(req).read()
-        return seq_file
+        try:
+            sequence = doc_seq.find_all('a', class_='genbank-file-download', href=True)[0]['href']
+            req = request.Request(sequence, headers={'User-Agent': 'Mozilla/5.0'})
+            seq_file = request.urlopen(req).read()
+            return seq_file
+        except IndexError:
+            return None
 
     def sorry_defence(self):
         if self.vendor == 'addgene':
             sorry = self.doc.find(string='Sorry!')
             if sorry == 'Sorry!':
-                print(f"Sorry! There is no such ID.")
                 return True
             else:
                 return False

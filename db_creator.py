@@ -28,14 +28,12 @@ def make_sql_style(plasmid: Addgene_parser.Plasmid) -> Addgene_parser.Plasmid:
     """Transform from Python's none to empty string and check for "'" sign
      and converts plasmid's sequnce into 16bit array"""
     for key, value in plasmid.__dict__.items():
-        if value is None:
-            setattr(plasmid, f'{key}', '')  # Transform None into empty string
         if isinstance(value, str):
             for letter in value:
                 if letter == "'":
                     setattr(plasmid, f'{key}', "''".join(value.split("'")))  # removing "'" problem
-
-    plasmid.sequence = plasmid.sequence.decode('utf-8')
+    if isinstance(plasmid.sequence, (bytes, bytearray)):
+        plasmid.sequence = plasmid.sequence.decode('utf-8')
     return plasmid
 
 
@@ -45,7 +43,7 @@ def create_table(id_list: list):
         Addgene_parser.PlasmidParser(id=id_list)
         for plasmid in Addgene_parser.PlasmidParser.plasmid_list:
             create_record(plasmid, conn)
-        conn.commit()
+            conn.commit()
 
     print(f'Disconnecting from database {DATABASE_CONFIG.get("database")}')
 
@@ -62,18 +60,17 @@ def create_record(plasmid: Addgene_parser.Plasmid, conn):
     cursor.execute(
         f"INSERT INTO addgene_plasmids (id, name, size, backbone, vector_type, marker, resistance, growth_t, " +
         f"growth_strain, growth_instructions, copy_num, gene_insert, url, sequence)" +
-        f"  VALUES ({plasmid.id}, '{plasmid.name}', {plasmid.size}, '{plasmid.backbone}', '{plasmid.vector_type}'," +
-        f" '{plasmid.marker}', '{plasmid.resistance}', '{plasmid.growth_t}', '{plasmid.growth_strain}'," +
-        f" '{plasmid.growth_instructions}', '{plasmid.copy_num}', '{plasmid.gene_insert}', '{plasmid.url}'," +
-        f" %s)", (plasmid.sequence,))
+        f"  VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        (plasmid.id, plasmid.name, plasmid.size, plasmid.backbone, plasmid.vector_type, plasmid.marker,
+         plasmid.resistance, plasmid.growth_t, plasmid.growth_strain, plasmid.growth_instructions,
+         plasmid.copy_num, plasmid.gene_insert, plasmid.url, plasmid.sequence,))
+
     print(f"Plasmid {plasmid.id}, {plasmid.name} has been added to {DATABASE_CONFIG.get('database')}.")
-    # cursor.execute('SELECT * FROM addgene_plasmids')
-    # print(cursor.fetchall())
     cursor.close()
 
 
 def main():
-    id_list = [1, 42888, 42876, 26248, 186478, 22222]
+    id_list = [i for i in range(1001, 1500)]  # There is no plasmids between 52 and 1015
     create_table(id_list)
 
 
