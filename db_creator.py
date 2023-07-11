@@ -44,6 +44,7 @@ def create_table(id_list: list):
         for plasmid in Addgene_parser.PlasmidParser.plasmid_list:
             create_record(plasmid, conn)
             conn.commit()
+        Addgene_parser.PlasmidParser.plasmid_list.clear()  # clear the cash of the parser
 
     print(f'Disconnecting from database {DATABASE_CONFIG.get("database")}')
 
@@ -70,8 +71,15 @@ def create_record(plasmid: Addgene_parser.Plasmid, conn):
 
 
 def main():
-    id_list = [i for i in range(1001, 1500)]  # There is no plasmids between 52 and 1015
-    create_table(id_list)
+    """Function that allows to parse all plasmids from Addgene"""
+    current = 1
+    step = 500
+    start, end = current, (current + step)
+    while end <= 150000:
+        id_list = [i for i in range(start, end)]
+        create_table(id_list)
+        start += step
+        end += step
 
 
 if __name__ == '__main__':

@@ -17,6 +17,38 @@ import requests
 import pandas as pd
 import urllib.request as request
 import os
+from typing import Callable, Any
+from requests.exceptions import ConnectionError
+from httpx import TransportError
+from time import sleep
+from math import log2
+
+REQUESTS_RETRY_COUNT = 623
+_REQUEST_STEP_BASE_DELAY = 60
+
+
+def get_request_delay(iteration: float) -> float:
+    """
+    :param iteration:
+    :return:
+    """
+    return _REQUEST_STEP_BASE_DELAY + log2(iteration) * 10
+
+
+def _with_retry(func: Callable) -> Callable:
+    def wrapper(*args, **kwargs) -> Any:
+        for i in range(REQUESTS_RETRY_COUNT + 1):
+            try:
+                return func(*args, **kwargs)
+            except (TransportError, ConnectionError) as e:
+                if i == REQUESTS_RETRY_COUNT:
+                    raise e
+                delay = get_request_delay((i + 1))
+                # log here
+                print('Reconnecting.')
+                sleep(delay)
+
+    return wrapper
 
 
 @dataclass()
@@ -94,17 +126,18 @@ class Plasmid(Description):
             return None
         new_name = self.name
         for char in self.name:
-            if char in '<>:"/\\|?*':
-                new_name = new_name.replace(char, ';')
+            if char in '<>:"/|?*\t\n\b':
+                new_name = new_name.replace(char, '-')
+            elif char in 'Δ':
+                new_name = new_name.replace(char, 'delta')
+            elif char in '\\':
+                new_name = new_name.replace(char, 'back-slash')
+            elif char.lower() in 'α':
+                new_name = new_name.replace(char, 'alpha')
         if not os.path.isdir(path + f'Plasmids\\{new_name}'):
             os.makedirs(path + f'Plasmids\\{new_name}')
         with open(path + f'Plasmids\\{new_name}\\{new_name}.txt', 'wb') as file:
             file.write(seq_file)
-
-        # if there is no info about total vector size on the parsed page
-        if self.size is None and os.path.isdir(path + f'Plasmids\\{new_name}'):
-            with open(path + f'Plasmids\\{new_name}\\{new_name}.txt', 'r') as file:
-                self.size = int(file.readline().split()[2])
 
 
 class PlasmidParser:
@@ -122,6 +155,7 @@ class PlasmidParser:
         if isinstance(self.id, int):
             self.url = self.base_url + f'{self.id}/'
             self.doc, self.doc_seq = self.get_html()
+            self.seq_file = self.get_txt(self.doc_seq)
 
             self.get(self.id)
 
@@ -129,12 +163,16 @@ class PlasmidParser:
             for plasmid_id in self.id:
                 self.url = self.base_url + f'{plasmid_id}/'
                 self.doc, self.doc_seq = self.get_html()
+                self.seq_file = self.get_txt(self.doc_seq)
 
                 self.get(plasmid_id)
 
+    @_with_retry
     def get(self, id: int):
         if self.sorry_defence():
             print(f"Sorry! There is no such id: {id}.")
+            return None
+        elif self.get_name() is None:
             return None
         else:
             plasmid = Plasmid(name=self.get_name(), gene_insert=self.get_insert(),
@@ -143,17 +181,18 @@ class PlasmidParser:
                               growth_strain=self.get_growth_strain(), resistance=self.get_resistance(),
                               vector_type=self.get_vector_type(),
                               backbone=self.get_backbone(), id=id,
-                              vendor=self.vendor, url=self.url, growth_t=self.get_growth_t(), size=self.get_size(),
-                              sequence=self.get_txt(self.doc_seq))
+                              vendor=self.vendor, url=self.url, growth_t=self.get_growth_t(),
+                              sequence=self.seq_file, size=self.get_size())
             print(f'Getting {plasmid.name}, id: {plasmid.id}')
             # plasmid.to_csv(self.path) # Uncomment if you want to write down a text with csv
             # plasmid.to_json(self.path) # Uncomment if you want to write down a json file
-            plasmid.to_txt(self.path, self.get_txt(self.doc_seq))
+            # plasmid.to_txt(self.path, self.seq_file)) # Uncomment if you want to write down gbk file
 
             PlasmidParser.plasmid_list.append(plasmid)
             return plasmid
 
     # only Addgene vendor is implemented yet
+    @_with_retry
     def get_html(self):
         if self.vendor == 'addgene':
             url_sequence = self.url + 'sequences/'
@@ -161,15 +200,25 @@ class PlasmidParser:
             result_seq = requests.get(url_sequence)
             return BeautifulSoup(result_html.text, 'html.parser'), BeautifulSoup(result_seq.text, 'html.parser')
 
+    @_with_retry
     def get_txt(self, doc_seq):
+        tries = 3
         try:
-            sequence = doc_seq.find_all('a', class_='genbank-file-download', href=True)[0]['href']
-            req = request.Request(sequence, headers={'User-Agent': 'Mozilla/5.0'})
-            seq_file = request.urlopen(req).read()
-            return seq_file
-        except IndexError:
+            for i in range(tries + 1):
+                try:
+                    sequence = doc_seq.find_all('a', class_='genbank-file-download', href=True)[0]['href']
+                    req = request.Request(sequence, headers={'User-Agent': 'Mozilla/5.0'})
+                    seq_file = request.urlopen(req).read()
+                    if isinstance(seq_file, (bytes, bytearray)):
+                        seq_file = seq_file.decode('utf-8', errors="replace").replace("\x00", "\uFFFD")
+                    return seq_file
+                except (IndexError, ValueError) as e:
+                    pass
+            raise ValueError
+        except (IndexError, ValueError):
             return None
 
+    @_with_retry
     def sorry_defence(self):
         if self.vendor == 'addgene':
             sorry = self.doc.find(string='Sorry!')
@@ -178,11 +227,18 @@ class PlasmidParser:
             else:
                 return False
 
+    @_with_retry
     def get_name(self):
         # getting name
-        name = self.doc.find('span', class_='material-name').text
-        return name
+        try:
+            name = self.doc.find('span', class_='material-name').text
+            return name
+        except AttributeError:
+            name = self.doc.find(string='Pooled Library')
+            print(f'Got Pooled Library, skip. ID: {self.id}. ')
+            return None
 
+    @_with_retry
     def get_backbone(self):
         # getting vector backbone
         try:
@@ -192,6 +248,7 @@ class PlasmidParser:
             backbone = None
         return backbone
 
+    @_with_retry
     def get_vector_type(self):
         # getting vector type
         try:
@@ -201,6 +258,7 @@ class PlasmidParser:
             vector_type = None
         return vector_type
 
+    @_with_retry
     def get_marker(self):
         # getting selectable markers
         try:
@@ -210,6 +268,7 @@ class PlasmidParser:
             marker = None
         return marker
 
+    @_with_retry
     def get_resistance(self):
         # getting bacterial resistance(s)
         try:
@@ -219,6 +278,7 @@ class PlasmidParser:
             resistance = None
         return resistance
 
+    @_with_retry
     def get_growth_t(self):
         # getting Growth Temperature
         try:
@@ -228,6 +288,7 @@ class PlasmidParser:
             growth_t = None
         return growth_t
 
+    @_with_retry
     def get_growth_strain(self):
         # getting Growth Strain(s)
         try:
@@ -237,6 +298,7 @@ class PlasmidParser:
             growth_strain = None
         return growth_strain
 
+    @_with_retry
     def get_growth_instructions(self):
         # getting Growth instructions
         try:
@@ -246,6 +308,7 @@ class PlasmidParser:
             growth_instructions = None
         return growth_instructions
 
+    @_with_retry
     def get_copy_number(self):
         # getting Copy number
         try:
@@ -254,6 +317,7 @@ class PlasmidParser:
             copy_num = None
         return copy_num
 
+    @_with_retry
     def get_insert(self):
         # getting Gene/Insert name
         try:
@@ -263,6 +327,7 @@ class PlasmidParser:
             gene_insert = None
         return gene_insert
 
+    @_with_retry
     def get_size(self):
         # getting Total vector size (bp)
         try:
@@ -270,12 +335,18 @@ class PlasmidParser:
                 self.doc.find(string='Total vector size (bp)').find_parent('li', class_='field').text.split()[4::]))
         except AttributeError:
             size = None
+        # getting Total vector size from gbk file
+        if size is None and self.seq_file is not None:
+            try:
+                size = int(self.seq_file.split()[2])
+            except IndexError:
+                size = None
         return size
 
 
 def main():
     """A test function that shows how PlasmidParser works"""
-    id_list = [1, 42888, 42876, 26248, 186478, 22222]
+    id_list = [142175, 1, 42888, 42876, 26248, 186478, 22222, 25716]
     PlasmidParser(id=id_list)
     plasmids_for_test = {}
     for plasmid in PlasmidParser.plasmid_list:
